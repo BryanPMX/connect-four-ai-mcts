@@ -1,0 +1,13 @@
+Connect Four MCTS Tournament Results
+Games per match: 2
+Total time: 1024.33 seconds
+
+Win percentages (row algorithm vs column algorithm):
+
+Algorithm      UR             PMCGS_500      PMCGS_10000    UCT_500        UCT_10000      
+------------------------------------------------------------------------------------------
+UR             -              .1f.1f.1f.1f
+PMCGS_500      .1f-              .1f.1f.1f
+PMCGS_10000    .1f.1f-              .1f.1f
+UCT_500        .1f.1f.1f-              .1f
+UCT_10000      .1f.1f.1f.1f-              
