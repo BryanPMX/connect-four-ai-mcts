@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This project implements Monte Carlo Tree Search (MCTS) algorithms for playing Connect Four, as required for CS 4320 Programming Assignment 3. The implementation includes three distinct algorithms: Uniform Random (UR), Pure Monte Carlo Game Search (PMCGS), and Upper Confidence Bound for Trees (UCT). Additionally, a comprehensive tournament system evaluates the performance of these algorithms against each other.
+This project implements Monte Carlo Tree Search (MCTS) algorithms for playing Connect Four. The implementation includes three distinct algorithms: Uniform Random (UR), Pure Monte Carlo Game Search (PMCGS), and Upper Confidence Bound for Trees (UCT). Additionally! a comprehensive tournament system evaluates the performance of these algorithms against each other.
 
 ## Authors
 
@@ -35,7 +35,7 @@ cs4320-pa3-connect-four/
 │   └── test3.txt                    # UCT algorithm test case
 ├── docs/
 │   └── PA3_Game_Playing.pdf         # Original assignment specification
-└── README.md                        # This documentation
+└── README.md                        # This file
 ```
 
 ## Implementation Details
@@ -83,16 +83,21 @@ The Connect Four game is represented using a 7×6 grid, where:
 
 ### Prerequisites
 
-- Python 3.7+
-- No external dependencies required
+- Python 3.8+ (tested on 3.13)
+- Optional but recommended: virtual environment (below)
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install pytest  # optional, only needed for running the automated tests
+```
 
 ### Part I: Algorithm Testing
 
 #### Running Individual Algorithms
 
 ```bash
-# Navigate to the project directory
-cd cs4320-pa3-connect-four
+Navigate to the project directory
 
 # Test UR algorithm
 python3 src/connect_four.py data/test1.txt Verbose 0
@@ -100,8 +105,8 @@ python3 src/connect_four.py data/test1.txt Verbose 0
 # Test PMCGS with 500 simulations
 python3 src/connect_four.py data/test2.txt Brief 500
 
-# Test UCT with 1000 simulations
-python3 src/connect_four.py data/test3.txt None 1000
+# Test UCT with 10000 simulations
+python3 src/connect_four.py data/test3.txt Brief 10000
 ```
 
 #### Command Line Parameters
@@ -116,20 +121,20 @@ python3 src/connect_four.py <input_file> <verbosity> <parameter>
 
 #### Verbosity Levels
 
-- **Verbose**: Detailed output including simulation traces, UCB values, and tree updates
-- **Brief**: Summary output with final column values and selected move
-- **None**: Minimal output, move selection only
+- **Verbose**: Detailed output including simulation traces, UCB values, node additions, rollouts, and the final move.
+- **Brief**: Quiet search plus the per-column `wi/ni` summaries and final move selection.
+- **None**: Fully silent (no column table, no final move). Use this for tournaments or benchmarking to match the assignment requirement of suppressing output during automated play.
 
 ### Part II: Tournament Experiments
 
 #### Running Full Tournament (Recommended for Assignment)
 
 ```bash
-# Run tournament with 30 games per algorithm pair (scaled for time)
-python3 src/tournament_runner.py 30
+# Run the required 100 games per pairing (25 matchups total)
+python3 src/tournament_runner.py 100
 ```
 
-**Note**: The original assignment specifies 100 games per pair with 500/10000 simulations. Due to computational constraints, we recommend 20-50 games per pair. Document any scaling decisions in your final report.
+`tournament_runner.py` automatically runs the five required variants (UR, PMCGS‑500, PMCGS‑10000, UCT‑500, UCT‑10000), alternates colors so that each pairing splits first-move advantage, and writes a win-percentage matrix to `tournament_results.txt`. Passing a smaller `num_games` (e.g., 30) is acceptable for interim experiments—just document any deviation from the official 100-game requirement in your report.
 
 #### Running Fast Tournament (For Development/Testing)
 
@@ -138,14 +143,19 @@ python3 src/tournament_runner.py 30
 python3 src/fast_tournament_runner.py 10
 ```
 
+The fast runner subclasses the main tournament logic but locks every MCTS configuration to 50 simulations. Use this when iterating locally; the console and `fast_tournament_results.txt` still show the same win-percentage table format as the full tournament.
+
 ### Running Tests
 
 ```bash
 # Run basic functionality tests
 python3 tests/test_basic.py
 
-# Run tournament system tests
+# Run tournament system smoke tests
 python3 tests/test_tournament.py
+
+# Or run the entire suite with pytest (recommended if installed)
+pytest
 ```
 
 ## Experimental Results
@@ -181,11 +191,11 @@ Our preliminary results show:
 
 ### Validation Results
 
-- ✅ Board operations (move, undo, validation)
-- ✅ Win condition detection (horizontal, vertical, diagonal)
-- ✅ Algorithm implementations (UR, PMCGS, UCT)
-- ✅ Command-line interface compliance
-- ✅ Tournament system functionality
+- Board operations (move, undo, validation)
+- Win condition detection (horizontal, vertical, diagonal)
+- Algorithm implementations (UR, PMCGS, UCT)
+- Command-line interface compliance
+- Tournament system functionality
 
 ## Performance Optimizations
 
@@ -211,10 +221,6 @@ Our preliminary results show:
 3. **Transposition Tables**: Cache previously evaluated positions
 4. **Advanced UCT**: Dynamic exploration constants and move ordering
 
-## Academic Integrity Statement
-
-This implementation was developed collaboratively by the authors following the assignment specifications. All code is original and properly documented. External references (if any) are cited in code comments. The tournament results and analysis represent our independent experimental work.
-
 ## References
 
 - [Monte Carlo Tree Search Wikipedia](https://en.wikipedia.org/wiki/Monte_Carlo_tree_search)
@@ -222,5 +228,3 @@ This implementation was developed collaboratively by the authors following the a
 - Assignment specification (PA3_Game_Playing.pdf)
 
 ---
-
-**Final Submission**: This project fulfills all requirements of CS 4320 PA3. The implementation demonstrates proper understanding of MCTS algorithms and their application to game playing domains.

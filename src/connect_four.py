@@ -9,7 +9,12 @@ import sys
 import random
 import math
 import time
-from typing import List, Optional, Tuple, Dict
+from typing import Dict, List, Optional, Tuple
+
+
+def _opponent(player: str) -> str:
+    """Return the opposing player's token."""
+    return 'Y' if player == 'R' else 'R'
 
 
 class Board:
@@ -131,54 +136,72 @@ class Board:
 class MCTSNode:
     """Node in the MCTS tree"""
 
-    def __init__(self, parent: Optional['MCTSNode'] = None, move: Optional[int] = None):
+    def __init__(
+        self,
+        parent: Optional['MCTSNode'] = None,
+        move: Optional[int] = None,
+        player_to_move: str = 'Y',
+    ):
         self.parent = parent
-        self.move = move  # Move that led to this node
+        self.move = move  # Move that led to this node (0-indexed col)
         self.children: Dict[int, 'MCTSNode'] = {}
-        self.wi = 0  # Total value
+        self.wi = 0.0  # Total accumulated value from Yellow's perspective
         self.ni = 0  # Visit count
         self.untried_moves: List[int] = []
+        self.player_to_move = player_to_move
 
     def is_fully_expanded(self) -> bool:
         """Check if all possible moves have been tried"""
         return len(self.untried_moves) == 0
 
     def best_child(self, c_param: float = 1.4) -> Optional['MCTSNode']:
-        """Select best child using UCB formula"""
+        """Select best child using the UCB rule with min/max behaviour."""
         if not self.children:
             return None
 
-        best_value = -float('inf')
+        unexplored = [child for child in self.children.values() if child.ni == 0]
+        if unexplored:
+            return random.choice(unexplored)
+
+        if self.player_to_move == 'Y':
+            best_value = -float('inf')
+            comparator = lambda current, best: current > best
+        else:
+            best_value = float('inf')
+            comparator = lambda current, best: current < best
+
         best_child = None
 
-        for move, child in self.children.items():
-            if child.ni == 0:
-                return child
-
-            # UCB formula
+        for child in self.children.values():
             exploitation = child.wi / child.ni
             exploration = c_param * math.sqrt(math.log(self.ni) / child.ni)
             ucb_value = exploitation + exploration
 
-            if ucb_value > best_value:
+            if comparator(ucb_value, best_value):
                 best_value = ucb_value
                 best_child = child
 
         return best_child
 
-    def best_child_final(self) -> Tuple[int, 'MCTSNode']:
+    def best_child_final(self) -> Tuple[int, Optional['MCTSNode']]:
         """Select best child for final move (no exploration)"""
         if not self.children:
             return -1, None
 
-        best_value = -float('inf')
+        if self.player_to_move == 'Y':
+            best_value = -float('inf')
+            comparator = lambda current, best: current > best
+        else:
+            best_value = float('inf')
+            comparator = lambda current, best: current < best
+
         best_move = -1
         best_child = None
 
         for move, child in self.children.items():
             if child.ni > 0:
                 value = child.wi / child.ni
-                if value > best_value:
+                if comparator(value, best_value):
                     best_value = value
                     best_move = move
                     best_child = child
@@ -214,19 +237,20 @@ class PMCGSAlgorithm:
 
     def select_move(self, player: str, verbosity: str, num_simulations: int) -> int:
         """Run PMCGS and select best move"""
-        root = MCTSNode()
-        root.untried_moves = self.board.get_legal_moves()
+        root = MCTSNode(player_to_move=player)
+        root.untried_moves = self.board.get_legal_moves().copy()
 
         for _ in range(num_simulations):
             self._run_simulation(root, player, verbosity)
 
         # Print column values
-        self._print_column_values(root)
+        if verbosity in ("Verbose", "Brief"):
+            self._print_column_values(root)
 
         # Select final move
         final_move, _ = root.best_child_final()
 
-        if verbosity != "None":
+        if verbosity in ("Verbose", "Brief"):
             print(f"FINAL Move selected: {final_move + 1}")  # 1-indexed
 
         return final_move
@@ -235,47 +259,51 @@ class PMCGSAlgorithm:
         """Run a single simulation"""
         current_board = self.board.copy()
         path = [root]
-        current_player = player
 
-        # Selection phase (random)
-        while not path[-1].is_fully_expanded() and path[-1].children:
-            move = random.choice(list(path[-1].children.keys()))
-            child = path[-1].children[move]
+        # Selection phase (random choice among expanded children)
+        while path[-1].is_fully_expanded() and path[-1].children:
+            node = path[-1]
+            move = random.choice(list(node.children.keys()))
+            child = node.children[move]
 
             if verbosity == "Verbose":
-                print(f"wi: {path[-1].wi}")
-                print(f"ni: {path[-1].ni}")
+                print(f"wi: {node.wi}")
+                print(f"ni: {node.ni}")
                 print(f"Move selected: {move + 1}")
 
-            current_board.make_move(move, current_player)
-            current_player = 'Y' if current_player == 'R' else 'R'
+            current_board.make_move(move, node.player_to_move)
             path.append(child)
 
+        node = path[-1]
+        is_terminal, value = current_board.is_terminal()
+
         # Expansion
-        if not path[-1].is_fully_expanded():
-            move = random.choice(path[-1].untried_moves)
-            path[-1].untried_moves.remove(move)
+        if not is_terminal and not node.is_fully_expanded():
+            move = random.choice(node.untried_moves)
+            node.untried_moves.remove(move)
+            current_board.make_move(move, node.player_to_move)
 
-            new_node = MCTSNode(path[-1], move)
-            path[-1].children[move] = new_node
+            next_player = _opponent(node.player_to_move)
+            new_node = MCTSNode(node, move, next_player)
+            new_node.untried_moves = current_board.get_legal_moves().copy()
+            node.children[move] = new_node
             path.append(new_node)
-
-            current_board.make_move(move, current_player)
-            current_player = 'Y' if current_player == 'R' else 'R'
 
             if verbosity == "Verbose":
                 print("NODE ADDED")
 
-        # Rollout (random moves until terminal)
-        while True:
             is_terminal, value = current_board.is_terminal()
-            if is_terminal:
-                if verbosity == "Verbose":
-                    print(f"TERMINAL NODE VALUE: {value}")
-                break
+            node = new_node
 
+        # Rollout (random moves until terminal)
+        current_player = path[-1].player_to_move
+        if is_terminal and verbosity == "Verbose":
+            print(f"TERMINAL NODE VALUE: {value}")
+
+        while not is_terminal:
             legal_moves = current_board.get_legal_moves()
             if not legal_moves:
+                value = 0
                 break
 
             move = random.choice(legal_moves)
@@ -283,15 +311,16 @@ class PMCGSAlgorithm:
                 print(f"Move selected: {move + 1}")
 
             current_board.make_move(move, current_player)
-            current_player = 'Y' if current_player == 'R' else 'R'
+            current_player = _opponent(current_player)
+            is_terminal, value = current_board.is_terminal()
 
-        # Backpropagation
+            if is_terminal and verbosity == "Verbose":
+                print(f"TERMINAL NODE VALUE: {value}")
+
+        # Backpropagation (values already from Yellow perspective)
         for node in reversed(path):
             node.ni += 1
-            if current_player == 'Y':  # Max player perspective
-                node.wi += value
-            else:  # Min player perspective
-                node.wi -= value
+            node.wi += value
 
             if verbosity == "Verbose":
                 print("Updated values:")
@@ -301,11 +330,15 @@ class PMCGSAlgorithm:
     def _print_column_values(self, root: MCTSNode) -> None:
         """Print the estimated values for each column"""
         for col in range(Board.COLS):
+            if not self.board.is_valid_move(col):
+                print(f"Column {col + 1}: Null")
+                continue
+
             if col in root.children and root.children[col].ni > 0:
                 value = root.children[col].wi / root.children[col].ni
                 print(f"Column {col + 1}: {value:.3f}")
             else:
-                print(f"Column {col + 1}: Null")
+                print(f"Column {col + 1}: 0.000")
 
 
 class UCTAlgorithm:
@@ -316,19 +349,20 @@ class UCTAlgorithm:
 
     def select_move(self, player: str, verbosity: str, num_simulations: int) -> int:
         """Run UCT and select best move"""
-        root = MCTSNode()
-        root.untried_moves = self.board.get_legal_moves()
+        root = MCTSNode(player_to_move=player)
+        root.untried_moves = self.board.get_legal_moves().copy()
 
         for _ in range(num_simulations):
             self._run_simulation(root, player, verbosity)
 
         # Print column values
-        self._print_column_values(root)
+        if verbosity in ("Verbose", "Brief"):
+            self._print_column_values(root)
 
         # Select final move
         final_move, _ = root.best_child_final()
 
-        if verbosity != "None":
+        if verbosity in ("Verbose", "Brief"):
             print(f"FINAL Move selected: {final_move + 1}")  # 1-indexed
 
         return final_move
@@ -337,59 +371,63 @@ class UCTAlgorithm:
         """Run a single simulation with UCT selection"""
         current_board = self.board.copy()
         path = [root]
-        current_player = player
 
         # Selection phase (UCT)
-        while not path[-1].is_fully_expanded() and path[-1].children:
+        while path[-1].is_fully_expanded() and path[-1].children:
+            node = path[-1]
             if verbosity == "Verbose":
-                print(f"wi: {path[-1].wi}")
-                print(f"ni: {path[-1].ni}")
-                # Print UCB values for children
-                for i, (move, child) in enumerate(path[-1].children.items(), 1):
-                    if child.ni > 0:
+                print(f"wi: {node.wi}")
+                print(f"ni: {node.ni}")
+                for i, (move, child) in enumerate(sorted(node.children.items()), 1):
+                    if child.ni > 0 and node.ni > 0:
                         exploitation = child.wi / child.ni
-                        exploration = 1.4 * math.sqrt(math.log(path[-1].ni) / child.ni)
+                        exploration = 1.4 * math.sqrt(math.log(node.ni) / child.ni)
                         ucb_value = exploitation + exploration
                         print(f"V{i}: {ucb_value:.3f}")
+                    else:
+                        print(f"V{i}: INF")
 
-            # Select best child using UCB
             best_child = path[-1].best_child()
-            if best_child is None:
+            if best_child is None or best_child.move is None:
                 break
 
             move = best_child.move
             if verbosity == "Verbose":
                 print(f"Move selected: {move + 1}")
 
-            current_board.make_move(move, current_player)
-            current_player = 'Y' if current_player == 'R' else 'R'
+            current_board.make_move(move, node.player_to_move)
             path.append(best_child)
 
+        node = path[-1]
+        is_terminal, value = current_board.is_terminal()
+
         # Expansion
-        if not path[-1].is_fully_expanded():
-            move = random.choice(path[-1].untried_moves)
-            path[-1].untried_moves.remove(move)
+        if not is_terminal and not node.is_fully_expanded():
+            move = random.choice(node.untried_moves)
+            node.untried_moves.remove(move)
+            current_board.make_move(move, node.player_to_move)
 
-            new_node = MCTSNode(path[-1], move)
-            path[-1].children[move] = new_node
+            next_player = _opponent(node.player_to_move)
+            new_node = MCTSNode(node, move, next_player)
+            new_node.untried_moves = current_board.get_legal_moves().copy()
+            node.children[move] = new_node
             path.append(new_node)
-
-            current_board.make_move(move, current_player)
-            current_player = 'Y' if current_player == 'R' else 'R'
 
             if verbosity == "Verbose":
                 print("NODE ADDED")
 
-        # Rollout (random moves until terminal)
-        while True:
             is_terminal, value = current_board.is_terminal()
-            if is_terminal:
-                if verbosity == "Verbose":
-                    print(f"TERMINAL NODE VALUE: {value}")
-                break
+            node = new_node
 
+        # Rollout (random moves until terminal)
+        current_player = path[-1].player_to_move
+        if is_terminal and verbosity == "Verbose":
+            print(f"TERMINAL NODE VALUE: {value}")
+
+        while not is_terminal:
             legal_moves = current_board.get_legal_moves()
             if not legal_moves:
+                value = 0
                 break
 
             move = random.choice(legal_moves)
@@ -397,15 +435,16 @@ class UCTAlgorithm:
                 print(f"Move selected: {move + 1}")
 
             current_board.make_move(move, current_player)
-            current_player = 'Y' if current_player == 'R' else 'R'
+            current_player = _opponent(current_player)
+            is_terminal, value = current_board.is_terminal()
+
+            if is_terminal and verbosity == "Verbose":
+                print(f"TERMINAL NODE VALUE: {value}")
 
         # Backpropagation
         for node in reversed(path):
             node.ni += 1
-            if current_player == 'Y':  # Max player perspective
-                node.wi += value
-            else:  # Min player perspective
-                node.wi -= value
+            node.wi += value
 
             if verbosity == "Verbose":
                 print("Updated values:")
@@ -415,11 +454,15 @@ class UCTAlgorithm:
     def _print_column_values(self, root: MCTSNode) -> None:
         """Print the estimated values for each column"""
         for col in range(Board.COLS):
+            if not self.board.is_valid_move(col):
+                print(f"Column {col + 1}: Null")
+                continue
+
             if col in root.children and root.children[col].ni > 0:
                 value = root.children[col].wi / root.children[col].ni
                 print(f"Column {col + 1}: {value:.3f}")
             else:
-                print(f"Column {col + 1}: Null")
+                print(f"Column {col + 1}: 0.000")
 
 
 class Tournament:
@@ -427,35 +470,46 @@ class Tournament:
 
     def __init__(self):
         self.algorithms = {
-            "UR": lambda board: URAlgorithm(board),
-            "PMCGS_500": lambda board: PMCGSAlgorithm(board),
-            "PMCGS_10000": lambda board: PMCGSAlgorithm(board),
-            "UCT_500": lambda board: UCTAlgorithm(board),
-            "UCT_10000": lambda board: UCTAlgorithm(board)
+            "UR": self._make_entry(lambda board: URAlgorithm(board), "UR", 0),
+            "PMCGS_500": self._make_entry(lambda board: PMCGSAlgorithm(board), "PMCGS", 500),
+            "PMCGS_10000": self._make_entry(lambda board: PMCGSAlgorithm(board), "PMCGS", 10000),
+            "UCT_500": self._make_entry(lambda board: UCTAlgorithm(board), "UCT", 500),
+            "UCT_10000": self._make_entry(lambda board: UCTAlgorithm(board), "UCT", 10000),
         }
+
+    @staticmethod
+    def _make_entry(factory, kind: str, simulations: int) -> Dict[str, object]:
+        return {"factory": factory, "kind": kind, "sims": simulations}
+
+    @staticmethod
+    def _select_move(algo, spec: Dict[str, object], player: str) -> int:
+        """Dispatch select_move with the appropriate parameters."""
+        kind = spec["kind"]
+        sims = spec["sims"]
+
+        if kind == "UR":
+            return algo.select_move(player, "None", 0)
+        elif kind == "PMCGS":
+            return algo.select_move(player, "None", sims)
+        elif kind == "UCT":
+            return algo.select_move(player, "None", sims)
+        else:
+            raise ValueError(f"Unknown algorithm kind '{kind}'")
 
     def play_game(self, algo1_name: str, algo2_name: str) -> str:
         """Play a single game between two algorithms"""
         board = Board()
         current_player = 'R'
-        algo1 = self.algorithms[algo1_name](board)
-        algo2 = self.algorithms[algo2_name](board)
+        spec1 = self.algorithms[algo1_name]
+        spec2 = self.algorithms[algo2_name]
+        algo1 = spec1["factory"](board)
+        algo2 = spec2["factory"](board)
 
         while True:
             if current_player == 'R':
-                if "PMCGS" in algo1_name:
-                    move = algo1.select_move(current_player, "None", 500 if "500" in algo1_name else 10000)
-                elif "UCT" in algo1_name:
-                    move = algo1.select_move(current_player, "None", 500 if "500" in algo1_name else 10000)
-                else:  # UR
-                    move = algo1.select_move(current_player, "None", 0)
+                move = self._select_move(algo1, spec1, current_player)
             else:
-                if "PMCGS" in algo2_name:
-                    move = algo2.select_move(current_player, "None", 500 if "500" in algo2_name else 10000)
-                elif "UCT" in algo2_name:
-                    move = algo2.select_move(current_player, "None", 500 if "500" in algo2_name else 10000)
-                else:  # UR
-                    move = algo2.select_move(current_player, "None", 0)
+                move = self._select_move(algo2, spec2, current_player)
 
             if move == -1 or not board.make_move(move, current_player):
                 # Invalid move, current player loses
@@ -472,35 +526,39 @@ class Tournament:
 
             current_player = 'Y' if current_player == 'R' else 'R'
 
-    def run_tournament(self, num_games: int = 100) -> Dict[str, Dict[str, float]]:
+    def run_tournament(self, num_games: int = 100) -> Dict[str, Dict[str, Optional[float]]]:
         """Run tournament between all algorithm pairs"""
         algo_names = list(self.algorithms.keys())
-        results = {name: {opponent: 0.0 for opponent in algo_names} for name in algo_names}
+        results: Dict[str, Dict[str, Optional[float]]] = {
+            name: {opponent: None for opponent in algo_names} for name in algo_names
+        }
 
-        for i, algo1 in enumerate(algo_names):
-            for j, algo2 in enumerate(algo_names):
-                if i == j:
-                    continue  # Skip self-play
+        for row in algo_names:
+            for col in algo_names:
+                if row == col:
+                    results[row][col] = None
+                    continue
 
-                print(f"Running {algo1} vs {algo2}...")
-
-                algo1_wins = 0
-                algo2_wins = 0
+                print(f"Running {row} vs {col}...")
+                row_wins = 0
                 draws = 0
 
                 for game in range(num_games):
-                    winner = self.play_game(algo1, algo2)
-                    if winner == 'R':
-                        algo1_wins += 1
-                    elif winner == 'Y':
-                        algo2_wins += 1
+                    if game % 2 == 0:
+                        winner = self.play_game(row, col)
+                        if winner == 'R':
+                            row_wins += 1
+                        elif winner == 'Draw':
+                            draws += 1
                     else:
-                        draws += 1
+                        winner = self.play_game(col, row)
+                        if winner == 'Y':
+                            row_wins += 1
+                        elif winner == 'Draw':
+                            draws += 1
 
-                # Calculate win percentage for algo1
-                total_games = algo1_wins + algo2_wins + draws
-                win_percentage = (algo1_wins / total_games) * 100 if total_games > 0 else 0
-                results[algo1][algo2] = win_percentage
+                win_percentage = ((row_wins + 0.5 * draws) / num_games) * 100 if num_games else 0
+                results[row][col] = win_percentage
 
         return results
 

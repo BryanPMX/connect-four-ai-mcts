@@ -31,21 +31,7 @@ def main():
     print("\n" + "=" * 60)
     print("TOURNAMENT RESULTS")
     print("=" * 60)
-    print("<10")
-    print("-" * 60)
-
-    algo_names = list(results.keys())
-    header = "<10" + "".join("<10")
-    print(header)
-
-    for algo1 in algo_names:
-        row = "<10"
-        for algo2 in algo_names:
-            if algo1 == algo2:
-                row += "<10"
-            else:
-                row += "<10.1f"
-        print(row)
+    _print_table(results)
 
     print("\nTournament completed in {:.2f} seconds".format(end_time - start_time))
 
@@ -56,21 +42,47 @@ def main():
         f.write(f"Total time: {end_time - start_time:.2f} seconds\n\n")
 
         f.write("Win percentages (row algorithm vs column algorithm):\n\n")
-        f.write("Algorithm".ljust(15))
-        for name in algo_names:
-            f.write(name.ljust(15))
-        f.write("\n" + "-" * (15 * (len(algo_names) + 1)) + "\n")
-
-        for algo1 in algo_names:
-            f.write(algo1.ljust(15))
-            for algo2 in algo_names:
-                if algo1 == algo2:
-                    f.write("-".ljust(15))
-                else:
-                    f.write(".1f")
-            f.write("\n")
+        _write_table(f, results)
 
     print("\nDetailed results saved to 'tournament_results.txt'")
+
+
+def _print_table(results):
+    algo_names = list(results.keys())
+    width = 14
+    header = "".ljust(width) + "".join(name.ljust(width) for name in algo_names)
+    divider = "-" * len(header)
+    print(header)
+    print(divider)
+
+    for row in algo_names:
+        line = row.ljust(width)
+        for col in algo_names:
+            value = results[row][col]
+            if value is None:
+                line += "-".ljust(width)
+            else:
+                line += f"{value:6.1f}%".ljust(width)
+        print(line)
+
+
+def _write_table(handle, results):
+    algo_names = list(results.keys())
+    width = 14
+    header = "".ljust(width) + "".join(name.ljust(width) for name in algo_names)
+    divider = "-" * len(header)
+    handle.write(header + "\n")
+    handle.write(divider + "\n")
+
+    for row in algo_names:
+        line = row.ljust(width)
+        for col in algo_names:
+            value = results[row][col]
+            if value is None:
+                line += "-".ljust(width)
+            else:
+                line += f"{value:6.1f}%".ljust(width)
+        handle.write(line + "\n")
 
 
 if __name__ == "__main__":

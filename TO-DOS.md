@@ -22,9 +22,9 @@
 python3 tests/test_basic.py
 
 # Test command-line interface
-python3 src/connect_four.py data/test1.txt Brief 0
-python3 src/connect_four.py data/test2.txt Brief 50
-python3 src/connect_four.py data/test3.txt Brief 50
+python3 src/connect_four.py data/test1.txt Verbose 0
+python3 src/connect_four.py data/test2.txt Brief 500
+python3 src/connect_four.py data/test3.txt Brief 10000
 ```
 
 #### 1.3 Run Initial Tournament Test
@@ -39,32 +39,35 @@ python3 src/fast_tournament_runner.py 5
 
 #### 2.1 Choose Tournament Parameters
 
-**Important Decision:** We need to balance accuracy vs. time constraints.
+**Important Decision:** Balance fidelity vs. runtime.
 
-**Option A: Scaled Tournament **
-- Use 500/10000 simulations as specified
-- Run 30 games per algorithm pair instead of 100
-- Total time: ~7-10 hours
-- Note scaling decision in report
+**Option A: Full Assignment Spec (recommended)**
+- Uses the five required configurations: UR, PMCGS(500), PMCGS(10000), UCT(500), UCT(10000)
+- Run 100 games per pairing (25 pairings total, colors alternate automatically)
+- Total time: can exceed 24 hours—plan ahead or run in batches
 
-**Option B: Reduced Tournament**
-- Use 100/500 simulations
-- Run 50 games per algorithm pair
-- Total time: ~2-3 hours
-- Note scaling decision in report
+**Option B: Scaled Tournament**
+- Keep the official simulation counts but reduce `num_games` to 20–50
+- Useful for intermediate checkpoints; document the deviation in the report
+
+**Option C: Development Smoke Tests**
+- Use `fast_tournament_runner.py` (all MCTS configs capped at 50 simulations)
+- Ideal for debugging logic changes before committing to long runs
 
 #### 2.2 Execute Chosen Tournament
 ```bash
-# For Option A (recommended):
+# Full spec (100 games per pairing)
+python3 src/tournament_runner.py 100
+
+# Scaled experiment (e.g., 30 games per pairing)
 python3 src/tournament_runner.py 30
 
-# For Option B (faster):
-# Modify tournament_runner.py to use 100/500 sims, then:
-python3 src/tournament_runner.py 50
+# Fast dev loop (50 sims, 10 games per pairing)
+python3 src/fast_tournament_runner.py 10
 ```
 
 #### 2.3 Analyze Results
-1. Open `tournament_results.txt`
+1. Open the generated `tournament_results.txt` (or `fast_tournament_results.txt`)
 2. Document key findings:
    - Which algorithm performs best?
    - How does performance scale with simulation count?
@@ -74,7 +77,7 @@ python3 src/tournament_runner.py 50
 ```bash
 # Time a few different configurations
 time python3 src/fast_tournament_runner.py 10
-time python3 src/tournament_runner.py 5  # With 500 sims
+time python3 src/tournament_runner.py 10  # Uses full 500/10000 sim settings
 ```
 
 ---
@@ -205,10 +208,11 @@ submission.zip or folder containing:
 
 #### 4.3 Final Verification
 ```bash
-# Run one more comprehensive test
+# Run one more comprehensive test pass
 python3 tests/test_basic.py
 python3 tests/test_tournament.py
-python3 src/connect_four.py data/test1.txt None 0
+pytest   # optional but recommended
+python3 src/connect_four.py data/test1.txt None 0  # ensure silent mode works
 ```
 
 ---
