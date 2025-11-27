@@ -17,8 +17,8 @@ def test_single_game():
 
     # Temporarily modify algorithms to use smaller sim counts
     tournament.algorithms = {
-        "UR": tournament._make_entry(lambda board: URAlgorithm(board), "UR", 0),
-        "PMCGS_50": tournament._make_entry(lambda board: PMCGSAlgorithm(board), "PMCGS", 50),
+        "UR": tournament._make_entry("UR", URAlgorithm, "UR", 0),
+        "PMCGS_50": tournament._make_entry("PMCGS_50", PMCGSAlgorithm, "PMCGS", 50),
     }
 
     winner = tournament.play_game("UR", "PMCGS_50")
@@ -31,9 +31,9 @@ def test_fast_tournament():
 
     fast_tournament = Tournament()
     fast_tournament.algorithms = {
-        "UR": fast_tournament._make_entry(lambda board: URAlgorithm(board), "UR", 0),
-        "PMCGS_5": fast_tournament._make_entry(lambda board: PMCGSAlgorithm(board), "PMCGS", 5),
-        "UCT_5": fast_tournament._make_entry(lambda board: UCTAlgorithm(board), "UCT", 5),
+        "UR": fast_tournament._make_entry("UR", URAlgorithm, "UR", 0),
+        "PMCGS_5": fast_tournament._make_entry("PMCGS_5", PMCGSAlgorithm, "PMCGS", 5),
+        "UCT_5": fast_tournament._make_entry("UCT_5", UCTAlgorithm, "UCT", 5),
     }
 
     print("Running 2 games per match...")
@@ -45,6 +45,22 @@ def test_fast_tournament():
         print(f"{row}: {cols}")
 
     print(f"\nCompleted in {end_time - start_time:.2f} seconds")
+
+
+def test_parallel_tournament_consistency():
+    """Ensure parallel execution matches sequential results for tiny tournaments."""
+    tournament = Tournament()
+    tournament.algorithms = {
+        "UR": tournament._make_entry("UR", URAlgorithm, "UR", 0),
+        "PMCGS_5": tournament._make_entry("PMCGS_5", PMCGSAlgorithm, "PMCGS", 5),
+    }
+
+    sequential = tournament.run_tournament(2)
+    parallel = tournament.run_tournament(2, parallel_workers=2)
+
+    assert sequential.keys() == parallel.keys()
+    assert sequential["UR"]["PMCGS_5"] is not None
+    assert parallel["UR"]["PMCGS_5"] is not None
 
 
 def main():

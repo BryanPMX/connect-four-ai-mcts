@@ -58,12 +58,16 @@ python3 src/fast_tournament_runner.py 5
 ```bash
 # Full spec (100 games per pairing)
 python3 src/tournament_runner.py 100
+# Full spec leveraging 4 worker processes
+python3 src/tournament_runner.py 100 --workers 4
 
 # Scaled experiment (e.g., 30 games per pairing)
 python3 src/tournament_runner.py 30
 
 # Fast dev loop (50 sims, 10 games per pairing)
 python3 src/fast_tournament_runner.py 10
+# Fast loop with parallel workers
+python3 src/fast_tournament_runner.py 20 --workers 4
 ```
 
 #### 2.3 Analyze Results
@@ -78,6 +82,7 @@ python3 src/fast_tournament_runner.py 10
 # Time a few different configurations
 time python3 src/fast_tournament_runner.py 10
 time python3 src/tournament_runner.py 10  # Uses full 500/10000 sim settings
+time python3 src/tournament_runner.py 10 --workers 4  # Parallel benchmark
 ```
 
 ---
@@ -231,6 +236,7 @@ python3 -c "import sys; sys.path.append('src'); import connect_four; print('OK')
 **2. Tournament Takes Too Long**
 - Reduce games per match: `python3 src/tournament_runner.py 10`
 - Use fast runner: `python3 src/fast_tournament_runner.py 20`
+- Enable parallel workers: add `--workers <num_cores>` to either runner
 - Document scaling in report
 
 **3. Memory Issues**

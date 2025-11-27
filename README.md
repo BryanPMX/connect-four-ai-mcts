@@ -132,15 +132,21 @@ python3 src/connect_four.py <input_file> <verbosity> <parameter>
 ```bash
 # Run the required 100 games per pairing (25 matchups total)
 python3 src/tournament_runner.py 100
+
+# Leverage multiple CPU cores to shorten long runs
+python3 src/tournament_runner.py 100 --workers 4
 ```
 
-`tournament_runner.py` automatically runs the five required variants (UR, PMCGS‑500, PMCGS‑10000, UCT‑500, UCT‑10000), alternates colors so that each pairing splits first-move advantage, and writes a win-percentage matrix to `tournament_results.txt`. Passing a smaller `num_games` (e.g., 30) is acceptable for interim experiments—just document any deviation from the official 100-game requirement in your report.
+`tournament_runner.py` automatically runs the five required variants (UR, PMCGS‑500, PMCGS‑10000, UCT‑500, UCT‑10000), alternates colors so that each pairing splits first-move advantage, and writes a win-percentage matrix to `tournament_results.txt`. Passing a smaller `num_games` (e.g., 30) is acceptable for interim experiments—just document any deviation from the official 100-game requirement in your report. Supplying `--workers N` enables multi-process execution where each worker simulates independent games; results are deterministic relative to the sequential version, but the wall-clock time drops roughly in proportion to the number of CPU cores available.
 
 #### Running Fast Tournament (For Development/Testing)
 
 ```bash
 # Run fast tournament with 50 simulations and 10 games per pair
 python3 src/fast_tournament_runner.py 10
+
+# Optional: parallelize the fast runner as well
+python3 src/fast_tournament_runner.py 20 --workers 4
 ```
 
 The fast runner subclasses the main tournament logic but locks every MCTS configuration to 50 simulations. Use this when iterating locally; the console and `fast_tournament_results.txt` still show the same win-percentage table format as the full tournament.
@@ -165,12 +171,12 @@ pytest
 Based on our benchmarking:
 - **50 simulations**: ~0.05 seconds per move
 - **500 simulations**: ~0.25 seconds per move
-- **10,000 simulations**: ~5 seconds per move
+- **10,000 simulations**: ~5 seconds per move (single core)
 
 Tournament completion times:
-- Fast tournament (50 sims, 10 games): ~45 seconds
+- Fast tournament (50 sims, 10 games): ~45 seconds (single core)
 - Scaled tournament (500 sims, 30 games): ~15-20 minutes
-- Full tournament (10k sims, 100 games): ~24-30 hours
+- Full tournament (10k sims, 100 games): ~24-30 hours on one core, ~6-8 hours with `--workers 4`
 
 ### Expected Algorithm Performance
 
@@ -211,8 +217,8 @@ Our preliminary results show:
 
 ### Known Limitations
 - High simulation counts create computational bottlenecks
-- Tournament runtime scales quadratically with simulation count
-- Memory usage grows with tree depth
+- Tournament runtime scales quadratically with simulation count (parallel mode mitigates but does not eliminate this)
+- Memory usage grows with tree depth and number of worker processes
 
 ## Future Improvements
 

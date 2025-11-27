@@ -3,7 +3,7 @@ Fast Tournament Runner - Reduced simulation counts for testing
 Uses 50 simulations instead of 500/10000 to complete much faster
 """
 
-import sys
+import argparse
 import time
 from connect_four import Tournament, URAlgorithm, PMCGSAlgorithm, UCTAlgorithm
 
@@ -14,25 +14,35 @@ class FastTournament(Tournament):
     def __init__(self):
         super().__init__()
         self.algorithms = {
-            "UR": self._make_entry(lambda board: URAlgorithm(board), "UR", 0),
-            "PMCGS_50": self._make_entry(lambda board: PMCGSAlgorithm(board), "PMCGS", 50),
-            "PMCGS_500": self._make_entry(lambda board: PMCGSAlgorithm(board), "PMCGS", 50),
-            "UCT_50": self._make_entry(lambda board: UCTAlgorithm(board), "UCT", 50),
-            "UCT_500": self._make_entry(lambda board: UCTAlgorithm(board), "UCT", 50),
+            "UR": self._make_entry("UR", URAlgorithm, "UR", 0),
+            "PMCGS_50": self._make_entry("PMCGS_50", PMCGSAlgorithm, "PMCGS", 50),
+            "PMCGS_500": self._make_entry("PMCGS_500", PMCGSAlgorithm, "PMCGS", 50),
+            "UCT_50": self._make_entry("UCT_50", UCTAlgorithm, "UCT", 50),
+            "UCT_500": self._make_entry("UCT_500", UCTAlgorithm, "UCT", 50),
         }
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Run a reduced-speed tournament for quick testing.")
+    parser.add_argument("num_games", type=int, help="Games per pairing (e.g., 10).")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Optional number of parallel worker processes.",
+    )
+    return parser.parse_args()
 
 
 def main():
     """Run fast tournament and print results"""
-    if len(sys.argv) != 2:
-        print("Usage: python fast_tournament_runner.py <num_games_per_match>")
-        print("Example: python fast_tournament_runner.py 10")
-        print("NOTE: This uses 50 simulations instead of 500/10000 for speed")
-        sys.exit(1)
-
-    num_games = int(sys.argv[1])
+    args = parse_args()
+    num_games = args.num_games
+    workers = args.workers if args.workers and args.workers > 1 else None
 
     print(f"Running FAST Connect Four tournament with {num_games} games per match...")
+    if workers:
+        print(f"Using up to {workers} parallel workers (still limited to 50 sims).")
     print("NOTE: Using 50 simulations instead of 500/10000 for faster execution")
     print("=" * 70)
 
@@ -40,7 +50,7 @@ def main():
     tournament = FastTournament()
 
     start_time = time.time()
-    results = tournament.run_tournament(num_games)
+    results = tournament.run_tournament(num_games, parallel_workers=workers)
     end_time = time.time()
 
     # Print results table

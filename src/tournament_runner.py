@@ -3,27 +3,42 @@ Tournament Runner for Connect Four MCTS Algorithms
 Runs the tournament experiments required for Part II of the assignment
 """
 
-import sys
+import argparse
 import time
 from connect_four import Tournament
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Run the full CS4320 PA3 tournament.")
+    parser.add_argument(
+        "num_games",
+        type=int,
+        help="Number of games per algorithm pairing (assignment requires 100).",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Optional number of parallel worker processes to speed up tournaments.",
+    )
+    return parser.parse_args()
+
+
 def main():
     """Run tournament and print results"""
-    if len(sys.argv) != 2:
-        print("Usage: python tournament_runner.py <num_games_per_match>")
-        print("Example: python tournament_runner.py 100")
-        sys.exit(1)
-
-    num_games = int(sys.argv[1])
+    args = parse_args()
+    num_games = args.num_games
+    workers = args.workers if args.workers and args.workers > 1 else None
 
     print(f"Running Connect Four tournament with {num_games} games per match...")
+    if workers:
+        print(f"Using up to {workers} parallel workers for game simulation.")
     print("=" * 60)
 
     tournament = Tournament()
     start_time = time.time()
 
-    results = tournament.run_tournament(num_games)
+    results = tournament.run_tournament(num_games, parallel_workers=workers)
 
     end_time = time.time()
 
@@ -39,6 +54,8 @@ def main():
     with open("tournament_results.txt", "w") as f:
         f.write("Connect Four MCTS Tournament Results\n")
         f.write(f"Games per match: {num_games}\n")
+        if workers:
+            f.write(f"Parallel workers: {workers}\n")
         f.write(f"Total time: {end_time - start_time:.2f} seconds\n\n")
 
         f.write("Win percentages (row algorithm vs column algorithm):\n\n")

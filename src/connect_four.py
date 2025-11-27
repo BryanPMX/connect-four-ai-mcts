@@ -9,6 +9,7 @@ import sys
 import random
 import math
 import time
+from concurrent.futures import ProcessPoolExecutor
 from typing import Dict, List, Optional, Tuple
 
 
@@ -470,16 +471,16 @@ class Tournament:
 
     def __init__(self):
         self.algorithms = {
-            "UR": self._make_entry(lambda board: URAlgorithm(board), "UR", 0),
-            "PMCGS_500": self._make_entry(lambda board: PMCGSAlgorithm(board), "PMCGS", 500),
-            "PMCGS_10000": self._make_entry(lambda board: PMCGSAlgorithm(board), "PMCGS", 10000),
-            "UCT_500": self._make_entry(lambda board: UCTAlgorithm(board), "UCT", 500),
-            "UCT_10000": self._make_entry(lambda board: UCTAlgorithm(board), "UCT", 10000),
+            "UR": self._make_entry("UR", URAlgorithm, "UR", 0),
+            "PMCGS_500": self._make_entry("PMCGS_500", PMCGSAlgorithm, "PMCGS", 500),
+            "PMCGS_10000": self._make_entry("PMCGS_10000", PMCGSAlgorithm, "PMCGS", 10000),
+            "UCT_500": self._make_entry("UCT_500", UCTAlgorithm, "UCT", 500),
+            "UCT_10000": self._make_entry("UCT_10000", UCTAlgorithm, "UCT", 10000),
         }
 
     @staticmethod
-    def _make_entry(factory, kind: str, simulations: int) -> Dict[str, object]:
-        return {"factory": factory, "kind": kind, "sims": simulations}
+    def _make_entry(name: str, cls, kind: str, simulations: int) -> Dict[str, object]:
+        return {"name": name, "cls": cls, "kind": kind, "sims": simulations}
 
     @staticmethod
     def _select_move(algo, spec: Dict[str, object], player: str) -> int:
@@ -489,9 +490,7 @@ class Tournament:
 
         if kind == "UR":
             return algo.select_move(player, "None", 0)
-        elif kind == "PMCGS":
-            return algo.select_move(player, "None", sims)
-        elif kind == "UCT":
+        elif kind in {"PMCGS", "UCT"}:
             return algo.select_move(player, "None", sims)
         else:
             raise ValueError(f"Unknown algorithm kind '{kind}'")
@@ -502,8 +501,8 @@ class Tournament:
         current_player = 'R'
         spec1 = self.algorithms[algo1_name]
         spec2 = self.algorithms[algo2_name]
-        algo1 = spec1["factory"](board)
-        algo2 = spec2["factory"](board)
+        algo1 = spec1["cls"](board)
+        algo2 = spec2["cls"](board)
 
         while True:
             if current_player == 'R':
@@ -526,12 +525,18 @@ class Tournament:
 
             current_player = 'Y' if current_player == 'R' else 'R'
 
-    def run_tournament(self, num_games: int = 100) -> Dict[str, Dict[str, Optional[float]]]:
+    def run_tournament(
+        self,
+        num_games: int = 100,
+        parallel_workers: Optional[int] = None,
+    ) -> Dict[str, Dict[str, Optional[float]]]:
         """Run tournament between all algorithm pairs"""
         algo_names = list(self.algorithms.keys())
         results: Dict[str, Dict[str, Optional[float]]] = {
             name: {opponent: None for opponent in algo_names} for name in algo_names
         }
+
+        use_parallel = parallel_workers is not None and parallel_workers > 1
 
         for row in algo_names:
             for col in algo_names:
@@ -539,28 +544,110 @@ class Tournament:
                     results[row][col] = None
                     continue
 
-                print(f"Running {row} vs {col}...")
-                row_wins = 0
-                draws = 0
+                print(f"Running {row} vs {col}...", flush=True)
 
-                for game in range(num_games):
-                    if game % 2 == 0:
-                        winner = self.play_game(row, col)
-                        if winner == 'R':
-                            row_wins += 1
-                        elif winner == 'Draw':
-                            draws += 1
-                    else:
-                        winner = self.play_game(col, row)
-                        if winner == 'Y':
-                            row_wins += 1
-                        elif winner == 'Draw':
-                            draws += 1
+                if use_parallel:
+                    win_percentage = self._run_pair_parallel(row, col, num_games, parallel_workers)
+                else:
+                    win_percentage = self._run_pair_sequential(row, col, num_games)
 
-                win_percentage = ((row_wins + 0.5 * draws) / num_games) * 100 if num_games else 0
                 results[row][col] = win_percentage
 
         return results
+
+    def _run_pair_sequential(self, row: str, col: str, num_games: int) -> float:
+        row_wins = 0
+        draws = 0
+
+        for game in range(num_games):
+            if game % 2 == 0:
+                winner = self.play_game(row, col)
+                if winner == 'R':
+                    row_wins += 1
+                elif winner == 'Draw':
+                    draws += 1
+            else:
+                winner = self.play_game(col, row)
+                if winner == 'Y':
+                    row_wins += 1
+                elif winner == 'Draw':
+                    draws += 1
+
+        return ((row_wins + 0.5 * draws) / num_games) * 100 if num_games else 0
+
+    def _run_pair_parallel(
+        self,
+        row: str,
+        col: str,
+        num_games: int,
+        parallel_workers: Optional[int],
+    ) -> float:
+        if num_games == 0:
+            return 0.0
+
+        seeds = [random.randrange(1_000_000_000) for _ in range(num_games)]
+        row_is_red_flags = [(i % 2 == 0) for i in range(num_games)]
+
+        with ProcessPoolExecutor(max_workers=parallel_workers) as executor:
+            futures = []
+            for is_red, seed in zip(row_is_red_flags, seeds):
+                if is_red:
+                    red_spec = dict(self.algorithms[row])
+                    yellow_spec = dict(self.algorithms[col])
+                else:
+                    red_spec = dict(self.algorithms[col])
+                    yellow_spec = dict(self.algorithms[row])
+
+                futures.append(executor.submit(_play_game_worker, red_spec, yellow_spec, seed))
+
+            row_wins = 0
+            draws = 0
+
+            for is_red, future in zip(row_is_red_flags, futures):
+                winner = future.result()
+                if is_red:
+                    if winner == 'R':
+                        row_wins += 1
+                    elif winner == 'Draw':
+                        draws += 1
+                else:
+                    if winner == 'Y':
+                        row_wins += 1
+                    elif winner == 'Draw':
+                        draws += 1
+
+        return ((row_wins + 0.5 * draws) / num_games) * 100
+
+
+def _play_game_worker(red_spec: Dict[str, object], yellow_spec: Dict[str, object], seed: Optional[int] = None) -> str:
+    """Standalone game simulator for multiprocessing contexts."""
+    if seed is not None:
+        random.seed(seed)
+
+    board = Board()
+    algo_red = red_spec["cls"](board)
+    algo_yellow = yellow_spec["cls"](board)
+    current_player = 'R'
+
+    while True:
+        if current_player == 'R':
+            move = Tournament._select_move(algo_red, red_spec, current_player)
+        else:
+            move = Tournament._select_move(algo_yellow, yellow_spec, current_player)
+
+        if move == -1 or not board.make_move(move, current_player):
+            return 'Y' if current_player == 'R' else 'R'
+
+        is_terminal, value = board.is_terminal()
+        if is_terminal:
+            if value == 1:
+                return 'Y'
+            elif value == -1:
+                return 'R'
+            else:
+                return 'Draw'
+
+        current_player = _opponent(current_player)
 
 
 def main():
